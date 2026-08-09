@@ -1,0 +1,66 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+tmp/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Build and packaging output
+build/
+dist/
+releases/
+*.egg-info/
+*.exe
+*.lnk
+*.zip
+
+# Application runtime data
+pomodoro_settings.json
+pomodoro_history.json
+cache/
+.cache/
+splash_cache/
+*.cache
+*.tmp
+*.temp
+*.log
+*.bak
+
+# Personal editor and OS settings
+.vscode/
+.idea/
+.agents/
+.codex/
+*.code-workspace
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Secrets and credentials
+local_credentials/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+credentials.json
+credentials.*.json
+secrets.json
+secrets.*.json
+client_secret*.json
+google_calendar_token.json
+
+# Local planning, handoff, and generated reference material
+handoffs/
+PomodoroOverlay_Codex_Handoff/

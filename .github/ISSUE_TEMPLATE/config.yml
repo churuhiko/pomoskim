@@ -1,0 +1,9 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 開発者連絡先
+    url: https://x.com/xbouyax
+    about: 公開Issueに適さない連絡はこちら
+  - name: 開発支援
+    url: https://ofuse.me/df740631
+    about: OFUSEで開発を支援
+

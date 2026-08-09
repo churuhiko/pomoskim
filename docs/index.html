@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ja" data-github-repository="">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="PomodoroOverlay - Windows 11向け軽量ポモドーロタイマー">
+  <title>PomodoroOverlay</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <img src="app_icon.png" alt="PomodoroOverlay icon" width="160" height="160">
+      <div>
+        <p class="eyebrow">Windows 11 desktop timer</p>
+        <h1>PomodoroOverlay</h1>
+        <p class="lead">作業の邪魔をせず、画面の隅で集中と休憩を支える軽量タイマー。</p>
+      </div>
+    </section>
+
+    <section class="download-card" aria-labelledby="download-heading">
+      <div>
+        <p class="eyebrow">v0.3.0 preview</p>
+        <h2 id="download-heading">Windows版をダウンロード</h2>
+        <p>Windows 11向けのプレビュー版です。GitHub Releaseから実行ファイルを取得できます。</p>
+      </div>
+      <div class="download-actions">
+        <a id="download-link" class="button button-primary" href="#" aria-disabled="true">
+          EXEをダウンロード
+        </a>
+        <a id="release-link" class="button button-secondary" href="#" aria-disabled="true">
+          全リリースを見る
+        </a>
+      </div>
+      <p id="download-status" class="download-status" role="status">
+        GitHub Pagesで公開するとダウンロードリンクが有効になります。
+      </p>
+    </section>
+
+    <section>
+      <h2>シンプルな操作</h2>
+      <div class="grid">
+        <article><h3>Work 25m</h3><p>25分の集中時間。完了すると休憩へ自動で切り替わります。</p></article>
+        <article><h3>Break 5m</h3><p>5分の小休憩。完了すると作業へ戻ります。</p></article>
+        <article><h3>Windows通知</h3><p>タイマー完了をWindows 11標準トーストで通知します。</p></article>
+        <article><h3>実績記録</h3><p>当日・当月・当年の完了数をローカルで集計します。</p></article>
+      </div>
+    </section>
+
+    <section>
+      <h2>Googleカレンダー連携</h2>
+      <p>前月の月報と前年の年報を終日予定として送信する、一方向の連携です。カレンダーの予定は読み取りません。</p>
+    </section>
+
+    <nav class="actions" aria-label="関連リンク">
+      <a href="privacy.html">プライバシー</a>
+      <a href="https://x.com/xbouyax">開発者連絡先</a>
+      <a href="https://ofuse.me/df740631">OFUSEで開発を支援</a>
+    </nav>
+  </main>
+  <footer>Copyright © 2026 BOUYA. All rights reserved.</footer>
+  <script>
+    (() => {
+      const root = document.documentElement;
+      const downloadLink = document.getElementById("download-link");
+      const releaseLink = document.getElementById("release-link");
+      const status = document.getElementById("download-status");
+      const configuredRepository = root.dataset.githubRepository.trim();
+      const githubPagesHost = window.location.hostname.match(/^([^./]+)\.github\.io$/i);
+      const pathParts = window.location.pathname.split("/").filter(Boolean);
+      const inferredRepository = githubPagesHost && pathParts.length
+        ? `${githubPagesHost[1]}/${pathParts[0]}`
+        : "";
+      const repository = configuredRepository || inferredRepository;
+
+      if (!/^[^/\s]+\/[^/\s]+$/.test(repository)) {
+        return;
+      }
+
+      const repositoryUrl = `https://github.com/${repository}`;
+      downloadLink.href = `${repositoryUrl}/releases/latest/download/PomodoroOverlay.exe`;
+      releaseLink.href = `${repositoryUrl}/releases/latest`;
+      downloadLink.removeAttribute("aria-disabled");
+      releaseLink.removeAttribute("aria-disabled");
+      status.textContent = "最新版はGitHub Releaseからダウンロードできます。";
+    })();
+  </script>
+</body>
+</html>
