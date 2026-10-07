@@ -1,0 +1,36 @@
+name: Compare Defender detection
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  scan:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: automatic-replace
+            ref: 0aed3b0
+          - variant: manual-download
+            ref: 7681a7d
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install identical build tools
+        run: python -m pip install -r requirements.txt pyinstaller==6.22.3
+      - name: Build
+        run: python -m PyInstaller --noconfirm PomodoroOverlay.spec
+      - name: Scan without running the executable
+        shell: pwsh
+        run: |
+          Get-MpComputerStatus | Select-Object AMServiceEnabled,AntivirusEnabled,AntivirusSignatureVersion
+          $scanner = Join-Path $env:ProgramFiles "Windows Defender\MpCmdRun.exe"
+          & $scanner -Scan -ScanType 3 -File (Resolve-Path dist/PomoSkin.exe).Path
+          $scanExit = $LASTEXITCODE
+          Get-MpThreatDetection | Select-Object ThreatID,ActionSuccess,Resources | Format-List
+          if ($scanExit -ne 0) { throw "Defender scan returned $scanExit" }
