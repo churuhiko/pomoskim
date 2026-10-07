@@ -72,6 +72,8 @@ python -m PyInstaller --noconfirm PomodoroOverlay.spec
 
 `main`へpushするとGitHub Actionsでテストが実行されます。`v`から始まるタグ（例: `v0.3.0-preview.2`）をpushすると、Windows向けにビルドした`PomoSkin.exe`をGitHub Releaseへ添付します。GitHub Pagesは`docs/`を公開し、トップページのダウンロードボタンは最新版Releaseへリンクします。
 
+配布EXEはWindowsのコード署名証明書を設定したReleaseで署名できます。署名を利用する場合は、リポジトリSecretsに`WINDOWS_SIGNING_CERTIFICATE_BASE64`（PFXをBase64化した値）と`WINDOWS_SIGNING_CERTIFICATE_PASSWORD`を登録します。各Releaseには署名の有無にかかわらずSHA-256チェックサムも添付します。
+
 ## 連絡先・開発支援
 
 - 開発者: BOUYA

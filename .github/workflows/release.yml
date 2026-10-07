@@ -33,6 +33,35 @@ jobs:
       - name: Build Pomo Skin
         run: python -m PyInstaller --noconfirm PomodoroOverlay.spec
 
+      - name: Sign executable when signing secrets are configured
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_BASE64 }}
+          WINDOWS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}
+        run: |
+          $certificate = $env:WINDOWS_SIGNING_CERTIFICATE_BASE64
+          $password = $env:WINDOWS_SIGNING_CERTIFICATE_PASSWORD
+          if ([string]::IsNullOrWhiteSpace($certificate) -and [string]::IsNullOrWhiteSpace($password)) {
+            Write-Host "Code signing secrets are not configured; keeping the build unsigned."
+            exit 0
+          }
+          if ([string]::IsNullOrWhiteSpace($certificate) -or [string]::IsNullOrWhiteSpace($password)) {
+            throw "Both Windows signing secrets must be configured together."
+          }
+          $pfx = Join-Path $env:RUNNER_TEMP "pomo-skin-signing.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($certificate))
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Filter signtool.exe -Recurse |
+            Sort-Object FullName | Select-Object -Last 1
+          if ($null -eq $signtool) { throw "signtool.exe was not found on the runner." }
+          & $signtool.FullName sign /fd SHA256 /f $pfx /p $password /tr http://timestamp.digicert.com /td SHA256 dist/PomoSkin.exe
+          if ($LASTEXITCODE -ne 0) { throw "signtool.exe failed." }
+
+      - name: Generate SHA-256 checksum
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash dist/PomoSkin.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  PomoSkin.exe" | Set-Content dist/PomoSkin.exe.sha256 -Encoding ascii
+
       - name: Create GitHub Release
         shell: pwsh
         env:
@@ -43,7 +72,7 @@ jobs:
           if (-not $tag) { throw "A release tag is required." }
           gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null
           if ($LASTEXITCODE -eq 0) {
-            gh release upload $tag dist/PomoSkin.exe --repo $env:GITHUB_REPOSITORY --clobber
+            gh release upload $tag dist/PomoSkin.exe dist/PomoSkin.exe.sha256 --repo $env:GITHUB_REPOSITORY --clobber
           } else {
-            gh release create $tag dist/PomoSkin.exe --repo $env:GITHUB_REPOSITORY --title "Pomo Skin $tag" --generate-notes
+            gh release create $tag dist/PomoSkin.exe dist/PomoSkin.exe.sha256 --repo $env:GITHUB_REPOSITORY --title "Pomo Skin $tag" --generate-notes
           }
