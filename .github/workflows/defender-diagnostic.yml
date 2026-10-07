@@ -11,9 +11,9 @@ jobs:
       matrix:
         include:
           - variant: automatic-replace
-            ref: 0aed3b0
+            ref: v0.3.0-preview.3
           - variant: manual-download
-            ref: 7681a7d
+            ref: v0.3.0-preview.4
     steps:
       - uses: actions/checkout@v4
         with:
