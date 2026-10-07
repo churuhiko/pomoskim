@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.3.0-preview.4 - 2026-10-07
+
+- 更新時の非表示cmd起動・EXE自己置換・スクリプト自己削除を廃止し、公式Releaseからの手動更新へ変更
+- UPXを無効化し、ReleaseビルドのPyInstallerバージョンを固定
+- Defender検出の解消は配布EXEを用いた確認が必要
+
 ## v0.3.0-preview.3 - 2026-10-07
 
 ### Changed

@@ -28,7 +28,7 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: python -m pip install -r requirements.txt pyinstaller
+        run: python -m pip install -r requirements.txt pyinstaller==6.22.3
 
       - name: Build Pomo Skin
         run: python -m PyInstaller --noconfirm PomodoroOverlay.spec
@@ -55,6 +55,14 @@ jobs:
           if ($null -eq $signtool) { throw "signtool.exe was not found on the runner." }
           & $signtool.FullName sign /fd SHA256 /f $pfx /p $password /tr http://timestamp.digicert.com /td SHA256 dist/PomoSkin.exe
           if ($LASTEXITCODE -ne 0) { throw "signtool.exe failed." }
+
+      - name: Scan executable with Microsoft Defender
+        shell: pwsh
+        run: |
+          $scanner = Join-Path $env:ProgramFiles "Windows Defender\MpCmdRun.exe"
+          if (-not (Test-Path $scanner)) { throw "Microsoft Defender scanner is unavailable." }
+          & $scanner -Scan -ScanType 3 -File (Resolve-Path dist/PomoSkin.exe).Path
+          if ($LASTEXITCODE -ne 0) { throw "Defender scan failed; do not publish this executable." }
 
       - name: Generate SHA-256 checksum
         shell: pwsh

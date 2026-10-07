@@ -4,10 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
-import subprocess
-import sys
 import tempfile
 import urllib.error
 import urllib.request
@@ -164,45 +161,3 @@ class GitHubUpdateService:
             if temp_path is not None:
                 temp_path.unlink(missing_ok=True)
             raise
-
-    @staticmethod
-    def schedule_windows_replace(downloaded_path, target_path):
-        """Replace the running EXE after this process exits and relaunch it."""
-
-        downloaded = Path(downloaded_path).resolve()
-        target = Path(target_path).resolve()
-        if os.name != "nt":
-            raise OSError("automatic replacement is only supported on Windows")
-        script = downloaded.with_suffix(".update.cmd")
-        quoted_downloaded = str(downloaded).replace('"', '""')
-        quoted_target = str(target).replace('"', '""')
-        script.write_text(
-            "@echo off\r\n"
-            "setlocal\r\n"
-            "timeout /t 2 /nobreak >nul\r\n"
-            "set /a attempts=0\r\n"
-            ":replace\r\n"
-            f"move /Y \"{quoted_downloaded}\" \"{quoted_target}\" >nul 2>&1\r\n"
-            "if not errorlevel 1 goto start\r\n"
-            "set /a attempts+=1\r\n"
-            "if %attempts% GEQ 15 goto cleanup\r\n"
-            "timeout /t 1 /nobreak >nul\r\n"
-            "goto replace\r\n"
-            ":start\r\n"
-            f"start \"\" \"{quoted_target}\"\r\n"
-            ":cleanup\r\n"
-            f"del /q \"{str(script).replace(chr(34), chr(34) * 2)}\" >nul 2>&1\r\n",
-            encoding="mbcs",
-        )
-        subprocess.Popen(
-            ["cmd.exe", "/c", str(script)],
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            close_fds=True,
-        )
-
-
-def current_executable_path():
-    if not getattr(sys, "frozen", False):
-        return None
-    path = Path(sys.executable)
-    return path if path.suffix.lower() == ".exe" else None

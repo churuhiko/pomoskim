@@ -56,7 +56,7 @@ from stats_integration import (
     today_text,
 )
 from time_shortening import ENABLE_TIME_SHORTENING_MODE
-from update_service import GitHubUpdateService, current_executable_path
+from update_service import GitHubUpdateService
 from version import APP_NAME, APP_VERSION, GITHUB_REPOSITORY, RELEASE_ASSET_NAMES
 
 try:
@@ -1880,31 +1880,15 @@ class PomodoroOverlay(QMainWindow):
         dialog.setText(
             f"最新版 {release['version']} が見つかりました。\n"
             f"現在のバージョン: v{APP_VERSION}\n\n"
-            "更新して終了すると、次回起動時に最新版へ置き換えます。"
+            "公式ダウンロードページを開きます。終了後に最新版へ更新してください。"
         )
-        update_button = dialog.addButton("更新して終了", QMessageBox.AcceptRole)
+        update_button = dialog.addButton("ダウンロードページを開く", QMessageBox.AcceptRole)
         later_button = dialog.addButton("更新せず終了", QMessageBox.RejectRole)
         dialog.setDefaultButton(update_button)
         dialog.exec()
         self._update_prompt_active = False
         if dialog.clickedButton() == update_button:
-            try:
-                executable = current_executable_path()
-                if executable is None:
-                    raise OSError("自動更新は配布版EXEでのみ利用できます")
-                staged = service.download_asset(release, executable.parent)
-                service.schedule_windows_replace(staged, executable)
-            except Exception:
-                LOGGER.exception("Failed to stage GitHub update")
-                error_dialog = QMessageBox(self)
-                self._style_calendar_message_box(error_dialog)
-                error_dialog.setWindowTitle(f"{APP_NAME}の更新")
-                error_dialog.setIcon(QMessageBox.Warning)
-                error_dialog.setText(
-                    "更新ファイルを準備できませんでした。\n"
-                    "更新せずに終了します。"
-                )
-                error_dialog.exec()
+            webbrowser.open(f"https://github.com/{GITHUB_REPOSITORY}/releases/latest")
         elif dialog.clickedButton() != later_button:
             return
         self.quit_application()
