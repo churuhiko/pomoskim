@@ -5,8 +5,6 @@ from pathlib import Path
 
 oauth_client = Path("local_credentials/google_oauth_client.json")
 oauth_datas = [(str(oauth_client), "oauth")] if oauth_client.exists() else []
-splash_image = Path("assets/splash_default.png")
-splash_datas = [(str(splash_image), "assets")] if splash_image.exists() else []
 app_icon_png = Path("assets/app_icon.png")
 app_icon_ico = Path("assets/pomodoro_overlay.ico")
 icon_datas = [(str(app_icon_png), "assets")] if app_icon_png.exists() else []
@@ -20,7 +18,7 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=oauth_datas + splash_datas + icon_datas + skin_datas,
+    datas=oauth_datas + icon_datas + skin_datas,
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -37,7 +35,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='PomodoroOverlay',
+    name='PomoSkin',
     icon=str(app_icon_ico) if app_icon_ico.exists() else None,
     debug=False,
     bootloader_ignore_signals=False,

@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Pomo Skinの使い方・設定・トラブルシューティング">
+  <title>使い方 | Pomo Skin</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="document">
+    <a href="index.html">← Pomo Skin</a>
+    <h1>使い方</h1>
+    <p>最終更新: 2026年10月7日</p>
+
+    <nav class="manual-nav" aria-label="説明書内リンク">
+      <a href="#start">起動と基本操作</a>
+      <a href="#tray">タスクトレイ</a>
+      <a href="#settings">設定</a>
+      <a href="#updates">更新</a>
+      <a href="#troubleshooting">困ったとき</a>
+    </nav>
+
+    <h2 id="start">起動と基本操作</h2>
+    <p>GitHub Releaseから <code>PomoSkin.exe</code> をダウンロードして実行します。インストール作業は不要です。起動スプラッシュは表示せず、メイン画面を直接開きます。</p>
+
+    <table class="manual-table">
+      <thead><tr><th>操作</th><th>内容</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Work 25m</strong></td><td>25分の作業タイマーを選択します。</td></tr>
+        <tr><td><strong>Break 5m</strong></td><td>5分の休憩タイマーを選択します。</td></tr>
+        <tr><td><strong>Start</strong></td><td>選択中のタイマーを開始します。</td></tr>
+        <tr><td><strong>Stop</strong></td><td>一時停止します。残り時間は保持されます。</td></tr>
+        <tr><td><strong>Reset</strong></td><td>選択中のタイマーを初期時間へ戻します。</td></tr>
+        <tr><td><strong>−</strong></td><td>ウィンドウを最小化します。設定によりタスクトレイへ収納できます。</td></tr>
+        <tr><td><strong>×</strong></td><td>確認後にアプリを完全終了します。</td></tr>
+      </tbody>
+    </table>
+    <p>作業が終わると休憩へ、休憩が終わると作業へ自動で切り替わります。完了時はWindows通知を表示し、実績へ記録します。</p>
+
+    <h2 id="tray">タスクトレイへ収納する</h2>
+    <p>歯車ボタン → <strong>一般</strong> → <strong>最小化時にタスクトレイへ収納する</strong> をオンにしてください。以降、最小化ボタンまたはタイトルバーの最小化で、タスクバーから隠れて通知領域へ収納されます。</p>
+    <ul>
+      <li>収納中もタイマー、通知、実績記録は継続します。</li>
+      <li>タスクトレイのPomo Skinアイコンをクリックまたは右クリックするとメニューを表示できます。</li>
+      <li>トレイアイコンのダブルクリック、左クリック、メニューの「表示」でウィンドウを復元できます。</li>
+      <li>収納中にPomo Skinをもう一度起動すると、起動済みのウィンドウを前面に表示します。</li>
+      <li>トレイメニューの「完全終了」からタイマーを終了できます。</li>
+    </ul>
+    <p>ポモドーロ終了時は、タスクバーに最小化している場合と同じ通知・切り替え動作になります。通知をクリックするとウィンドウを復元できます。</p>
+
+    <h2 id="settings">設定</h2>
+    <ul>
+      <li><strong>一般</strong>: 常に最前面、タスクトレイ収納、終了時の最新版確認を設定します。常に最前面は初期状態でオフです。</li>
+      <li><strong>通知</strong>: Windows通知と通知音を設定します。</li>
+      <li><strong>表示</strong>: 背景色、表示倍率、スキンを設定します。</li>
+      <li><strong>実績</strong>: 今日・今月・今年の完了数を確認し、月報・年報をカレンダーへ書き込みます。</li>
+      <li><strong>連携</strong>: Googleカレンダーとの一方向連携を設定します。</li>
+      <li><strong>ヘルプ</strong>: 操作チュートリアルと開発者連絡先を確認できます。</li>
+    </ul>
+    <div class="manual-note">設定変更は保存して閉じると反映されます。表示倍率や背景色は設定画面でプレビューされ、キャンセルすると元に戻ります。</div>
+
+    <h2 id="updates">最新版を確認する</h2>
+    <p>一般設定の <strong>終了時にGitHubで最新版を確認する</strong> をオンにすると、終了時にGitHub Releasesの最新版を確認します。新しい <code>PomoSkin.exe</code> がある場合は、更新して終了するかを確認するダイアログを表示します。</p>
+    <p>更新を選ぶとファイルを検証してからアプリを終了し、終了後に新しい実行ファイルへ置き換えます。更新中はアプリを再起動しないでください。通信できない場合は、通常どおり終了します。</p>
+
+    <h2 id="calendar">Googleカレンダー連携</h2>
+    <p>連携を有効にすると、Pomo Skinは月報・年報をGoogleカレンダーへ新規の終日予定として書き込みます。既存予定の読み取り・検索・変更・削除は行いません。OAuth認証情報とトークンは利用者のPC内に保存されます。</p>
+
+    <h2 id="troubleshooting">困ったとき</h2>
+    <ul>
+      <li><strong>画面が見えない:</strong> タスクトレイのPomo Skinアイコンをクリックするか、PomoSkin.exeをもう一度起動してください。</li>
+      <li><strong>最前面にならない:</strong> 一般設定の「常に最前面に表示」を確認してください。初期状態はオフです。</li>
+      <li><strong>通知が出ない:</strong> Windowsの設定 → システム → 通知で、Pomo Skinの通知を許可してください。</li>
+      <li><strong>更新できない:</strong> GitHub Releaseの公開状態とインターネット接続を確認し、必要ならReleaseページから手動で新しいEXEをダウンロードしてください。</li>
+    </ul>
+
+    <p><a href="privacy.html">データとプライバシー</a>もあわせて確認してください。</p>
+  </main>
+  <footer>Copyright © 2026 BOUYA. All rights reserved.</footer>
+</body>
+</html>

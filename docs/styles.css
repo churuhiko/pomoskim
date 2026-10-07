@@ -108,6 +108,24 @@ article {
 
 a { color: #5a4a00; }
 .document { max-width: 760px; min-height: calc(100vh - 100px); }
+.manual-nav { display: flex; flex-wrap: wrap; gap: 12px; margin: 24px 0 48px; }
+.manual-nav a { font-weight: 700; }
+.manual-note {
+  margin: 24px 0;
+  padding: 18px 22px;
+  background: rgba(255, 255, 255, .72);
+  border-left: 5px solid var(--yellow);
+  border-radius: 10px;
+}
+.manual-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 18px 0 28px;
+  background: rgba(255, 255, 255, .68);
+}
+.manual-table th, .manual-table td { padding: 11px 13px; border: 1px solid var(--line); text-align: left; vertical-align: top; }
+.manual-table th { background: #fff8dc; }
+kbd { padding: 2px 7px; border: 1px solid var(--line); border-radius: 5px; background: #fffdf5; font-family: inherit; }
 footer { padding: 24px; color: var(--muted); text-align: center; }
 
 @media (max-width: 640px) {

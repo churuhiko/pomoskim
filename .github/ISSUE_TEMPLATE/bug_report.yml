@@ -1,5 +1,5 @@
 name: 不具合報告
-description: PomodoroOverlayの不具合を報告します
+description: Pomo Skinの不具合を報告します
 title: "[Bug] "
 labels: [bug]
 body:
@@ -10,7 +10,7 @@ body:
     id: version
     attributes:
       label: バージョン
-      placeholder: v0.3.0-preview.1
+      placeholder: v0.3.0-preview.2
     validations:
       required: true
   - type: input

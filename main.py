@@ -3,6 +3,7 @@ import logging
 import math
 import os
 import socket
+import subprocess
 import sys
 import threading
 import webbrowser
@@ -19,6 +20,7 @@ from PySide6.QtGui import (
     QPainterPath,
     QPen,
     QPixmap,
+    QAction,
 )
 from PySide6.QtWidgets import (
     QApplication,
@@ -39,11 +41,12 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
     QTabWidget,
-    QProgressDialog,
     QRadioButton,
     QScrollArea,
     QSizePolicy,
     QStackedWidget,
+    QMenu,
+    QSystemTrayIcon,
 )
 
 from stats_integration import (
@@ -53,8 +56,8 @@ from stats_integration import (
     today_text,
 )
 from time_shortening import ENABLE_TIME_SHORTENING_MODE
-from splash_assets import SplashAssetManager, SplashWindow
-from version import APP_NAME, APP_VERSION
+from update_service import GitHubUpdateService, current_executable_path
+from version import APP_NAME, APP_VERSION, GITHUB_REPOSITORY, RELEASE_ASSET_NAMES
 
 try:
     from windows_toasts import (
@@ -72,8 +75,7 @@ except ImportError:  # pragma: no cover - notification failure must be non-fatal
     WindowsToaster = None
 
 MAX_SETTINGS_FILE_BYTES = 2 * 1024 * 1024
-SPLASH_DISPLAY_MS = 1000
-LOGGER = logging.getLogger("PomodoroOverlay")
+LOGGER = logging.getLogger(APP_NAME)
 
 BACKGROUND_PRESETS = {
     "cream": {
@@ -200,29 +202,6 @@ def skin_asset_path(skin_key):
         return None
     path = bundled_path(skin["asset"])
     return path if path.is_file() else None
-
-
-class SplashLifetime:
-    """Guard a WA_DeleteOnClose splash without retaining a stale QObject."""
-
-    def __init__(self, splash):
-        self._splash = splash
-        splash.destroyed.connect(self._clear)
-
-    def _clear(self, *_args):
-        self._splash = None
-
-    def close(self):
-        splash = self._splash
-        self._splash = None
-        if splash is None or not shiboken6.isValid(splash):
-            return False
-        splash.close()
-        return True
-
-    @property
-    def is_alive(self):
-        return self._splash is not None and shiboken6.isValid(self._splash)
 
 
 class SkinPanel(QWidget):
@@ -480,81 +459,6 @@ class BorderedCheckBox(QCheckBox):
         painter.drawRoundedRect(indicator_rect.adjusted(0, 0, -1, -1), 3, 3)
 
 
-class ClickableLabel(QLabel):
-    clicked = Signal()
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self.clicked.emit()
-            event.accept()
-            return
-        super().mousePressEvent(event)
-
-
-class SplashArtworkViewer(QDialog):
-    """Dimmed full-screen viewer closed by its text × or the area outside art."""
-
-    def __init__(self, image_path, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("起動スプラッシュのイラスト")
-        self.setWindowFlags(
-            Qt.Dialog | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
-        )
-        self.setWindowModality(Qt.ApplicationModal)
-        self.setAttribute(Qt.WA_TranslucentBackground, True)
-        self._artwork = QPixmap(str(image_path)) if image_path else QPixmap()
-        self.image_label = QLabel(self)
-        self.image_label.setObjectName("splashArtworkImage")
-        self.image_label.setAlignment(Qt.AlignCenter)
-        self.image_label.setStyleSheet("background: transparent;")
-        self.close_label = ClickableLabel("×", self)
-        self.close_label.setObjectName("splashArtworkClose")
-        self.close_label.setAlignment(Qt.AlignCenter)
-        self.close_label.setToolTip("閉じる")
-        self.close_label.setStyleSheet(
-            "color: #ffffff; background: transparent; font-size: 30px; font-weight: 700;"
-        )
-        self.close_label.clicked.connect(self.reject)
-
-    def show_on_parent_screen(self):
-        screen = self.parentWidget().screen() if self.parentWidget() else QApplication.primaryScreen()
-        if screen is not None:
-            self.setGeometry(screen.geometry())
-        return self.exec()
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.fillRect(self.rect(), QColor(0, 0, 0, 165))
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        if self._artwork.isNull():
-            self.image_label.setGeometry(self.rect())
-            return
-        maximum = self.size() * 0.78
-        scaled = self._artwork.scaled(
-            maximum, Qt.KeepAspectRatio, Qt.SmoothTransformation
-        )
-        left = (self.width() - scaled.width()) // 2
-        top = (self.height() - scaled.height()) // 2
-        self.image_label.setGeometry(left, top, scaled.width(), scaled.height())
-        self.image_label.setPixmap(scaled)
-        close_size = 42
-        close_left = min(self.width() - close_size - 12, left + scaled.width() + 10)
-        close_top = max(12, top - 6)
-        self.close_label.setGeometry(close_left, close_top, close_size, close_size)
-        self.close_label.raise_()
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton and not self.image_label.geometry().contains(
-            event.position().toPoint()
-        ):
-            self.reject()
-            event.accept()
-            return
-        super().mousePressEvent(event)
-
-
 class NotificationService:
     """Send local Windows notifications without affecting timer completion."""
 
@@ -569,7 +473,7 @@ class NotificationService:
             LOGGER.error("Windows-Toasts is unavailable; notifications are disabled")
             return
         try:
-            self.toaster = WindowsToaster("PomodoroOverlay")
+            self.toaster = WindowsToaster(APP_NAME)
         except Exception:
             LOGGER.exception("Failed to initialize Windows notifications")
 
@@ -782,6 +686,59 @@ class NotificationService:
 class IntegrationSignals(QObject):
     sync_finished = Signal(list, str)
     session_notification_activated = Signal()
+    existing_instance_requested = Signal()
+
+
+class SingleInstanceServer:
+    """Listen for a second launch and ask the existing window to reappear."""
+
+    def __init__(self, lock_socket, callback):
+        self.lock_socket = lock_socket
+        self.callback = callback
+        self._stop_event = threading.Event()
+        self._thread = None
+
+    def start(self):
+        self.lock_socket.settimeout(0.4)
+        self._thread = threading.Thread(
+            target=self._serve,
+            name="PomoSkinSingleInstance",
+            daemon=True,
+        )
+        self._thread.start()
+
+    def _serve(self):
+        while not self._stop_event.is_set():
+            try:
+                client, _address = self.lock_socket.accept()
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+            try:
+                if client.recv(32).startswith(b"show"):
+                    self.callback()
+            except OSError:
+                pass
+            finally:
+                try:
+                    client.close()
+                except OSError:
+                    pass
+
+    def stop(self):
+        if self._stop_event.is_set():
+            return
+        self._stop_event.set()
+        try:
+            host, port = self.lock_socket.getsockname()
+            wake = socket.create_connection((host, port), timeout=0.2)
+            wake.close()
+        except OSError:
+            pass
+        if self._thread is not None and self._thread.is_alive():
+            self._thread.join(1)
+        self._thread = None
 
 
 class OperationTutorialDialog(QDialog):
@@ -789,7 +746,7 @@ class OperationTutorialDialog(QDialog):
 
     def __init__(self, parent=None, allow_skip=False):
         super().__init__(parent)
-        self.setWindowTitle("PomodoroOverlay 操作チュートリアル")
+        self.setWindowTitle(f"{APP_NAME} 操作チュートリアル")
         self.setMinimumSize(440, 300)
         base_point_size = self.font().pointSizeF()
         if base_point_size <= 0:
@@ -811,7 +768,7 @@ class OperationTutorialDialog(QDialog):
         page_specs = (
             (
                 "ようこそ",
-                "<b>PomodoroOverlay</b>へようこそ。<br><br>"
+                f"<b>{APP_NAME}</b>へようこそ。<br><br>"
                 "作業と休憩を切り替えながら、集中時間を手軽に管理できます。",
             ),
             (
@@ -915,8 +872,10 @@ class PomodoroOverlay(QMainWindow):
             "window": {"x": 100, "y": 100, "width": 320, "height": 260},
             "geometry": None,
             "general": {
-                "always_on_top": True,
+                "always_on_top": False,
                 "confirm_full_exit": True,
+                "minimize_to_tray": False,
+                "check_updates_on_exit": False,
             },
             "notification_enabled": True,
             "notification_sound_enabled": True,
@@ -942,6 +901,9 @@ class PomodoroOverlay(QMainWindow):
         self.integration_signals.session_notification_activated.connect(
             self._restore_from_session_notification
         )
+        self.integration_signals.existing_instance_requested.connect(
+            self._restore_from_session_notification
+        )
         self._calendar_sync_running = False
         self._calendar_sync_thread = None
         self._calendar_sync_cancel = threading.Event()
@@ -962,6 +924,15 @@ class PomodoroOverlay(QMainWindow):
         self._is_quitting = False
         self._shutdown_complete = False
         self._settings_dialog = None
+        self._stored_in_tray = False
+        self._tray_available = QSystemTrayIcon.isSystemTrayAvailable()
+        self._tray_icon = None
+        self._tray_menu = None
+        self._tray_show_action = None
+        self._tray_toggle_action = None
+        self._update_check_completed = False
+        self._update_prompt_active = False
+        self._single_instance_server = None
         self.notification_service = NotificationService(
             self.integration_signals.session_notification_activated.emit
         )
@@ -973,6 +944,7 @@ class PomodoroOverlay(QMainWindow):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.tick)
         self._build_ui()
+        self._setup_tray()
         self._apply_theme()
         self._restore_window_state()
         self.update_display()
@@ -981,6 +953,82 @@ class PomodoroOverlay(QMainWindow):
         self.date_check_timer.start(60_000)
         if self.statistics.long_inactivity_reset:
             QTimer.singleShot(0, self._show_long_inactivity_notice)
+
+    def _setup_tray(self):
+        if not self._tray_available:
+            return
+        icon = QApplication.instance().windowIcon()
+        if icon is None or icon.isNull():
+            icon_path = bundled_path("assets/app_icon.png")
+            if icon_path.is_file():
+                icon = QIcon(str(icon_path))
+        self._tray_icon = QSystemTrayIcon(icon, self)
+        self._tray_icon.setToolTip(f"{APP_NAME} - {APP_VERSION}")
+        self._tray_menu = QMenu(self)
+        self._tray_show_action = QAction("ウインドウを表示", self)
+        self._tray_show_action.triggered.connect(self._restore_from_tray)
+        self._tray_toggle_action = QAction("開始", self)
+        self._tray_toggle_action.triggered.connect(self._toggle_timer_from_tray)
+        quit_action = QAction("完全終了", self)
+        quit_action.triggered.connect(self.confirm_full_exit)
+        self._tray_menu.addAction(self._tray_show_action)
+        self._tray_menu.addAction(self._tray_toggle_action)
+        self._tray_menu.addSeparator()
+        self._tray_menu.addAction(quit_action)
+        self._tray_icon.setContextMenu(self._tray_menu)
+        self._tray_icon.activated.connect(self._on_tray_activated)
+        self._apply_tray_visibility()
+
+    def _apply_tray_visibility(self):
+        if self._tray_icon is None:
+            return
+        enabled = self._general_setting("minimize_to_tray")
+        self._tray_icon.setVisible(enabled)
+        if not enabled and self._stored_in_tray:
+            self._restore_from_tray()
+
+    def _on_tray_activated(self, reason):
+        if reason in (
+            QSystemTrayIcon.Trigger,
+            QSystemTrayIcon.DoubleClick,
+            QSystemTrayIcon.Context,
+        ):
+            self._restore_from_tray()
+
+    def _toggle_timer_from_tray(self):
+        if self.is_running:
+            self.stop_timer()
+        else:
+            self.start_timer()
+
+    def _store_in_tray(self):
+        if self._is_quitting or not self._tray_available:
+            return False
+        self._stored_in_tray = True
+        self.showNormal()
+        self.hide()
+        self._update_tray_action()
+        return True
+
+    def _restore_from_tray(self):
+        if self._is_quitting:
+            return
+        self._stored_in_tray = False
+        self.showNormal()
+        self.show()
+        self.raise_()
+        self.activateWindow()
+        self._update_tray_action()
+
+    def _minimize_window(self):
+        if self._general_setting("minimize_to_tray") and self._tray_available:
+            self._store_in_tray()
+        else:
+            self.showMinimized()
+
+    def _update_tray_action(self):
+        if self._tray_toggle_action is not None:
+            self._tray_toggle_action.setText("一時停止" if self.is_running else "開始")
 
     def _get_settings_path(self):
         local_appdata = os.getenv("LOCALAPPDATA")
@@ -1107,14 +1155,14 @@ class PomodoroOverlay(QMainWindow):
 
         self.close_button = QPushButton("×")
         self.close_button.setFixedSize(28, 28)
-        self.close_button.setToolTip("Pomodoro Overlayを終了")
+        self.close_button.setToolTip(f"{APP_NAME}を終了")
         self.close_button.clicked.connect(self.confirm_full_exit)
         self.close_button.setStyleSheet("font-size: 16px; font-weight: 700; border: none; padding: 0px;")
 
         self.minimize_button = QPushButton("−")
         self.minimize_button.setFixedSize(28, 28)
         self.minimize_button.setToolTip("最小化")
-        self.minimize_button.clicked.connect(self.showMinimized)
+        self.minimize_button.clicked.connect(self._minimize_window)
         self.minimize_button.setStyleSheet(
             "font-size: 16px; font-weight: 700; border: none; padding: 0px;"
         )
@@ -1132,7 +1180,7 @@ class PomodoroOverlay(QMainWindow):
         title_row.addWidget(self.close_button)
         layout.addLayout(title_row)
 
-        self.title_label = QLabel("Pomodoro Overlay")
+        self.title_label = QLabel(APP_NAME)
         self.title_label.setAlignment(Qt.AlignCenter)
         self.title_label.setStyleSheet("font-size: 18px; font-weight: 700;")
         layout.addWidget(self.title_label)
@@ -1203,7 +1251,7 @@ class PomodoroOverlay(QMainWindow):
         )
 
     def _settings_window_title(self):
-        title = f"PomodoroOverlay v{APP_VERSION}"
+        title = f"{APP_NAME} v{APP_VERSION}"
         if self.time_shortening_enabled:
             title += " 時間短縮モード"
         return title
@@ -1314,18 +1362,27 @@ class PomodoroOverlay(QMainWindow):
         general_layout = QVBoxLayout(general_tab)
         always_on_top = BorderedCheckBox("常に最前面に表示")
         confirm_exit = BorderedCheckBox("完全終了時に確認する")
+        minimize_to_tray = BorderedCheckBox("最小化時にタスクトレイへ収納する")
+        check_updates_on_exit = BorderedCheckBox("終了時にGitHubで最新版を確認する")
         time_shortening_mode = None
         if ENABLE_TIME_SHORTENING_MODE:
             time_shortening_mode = BorderedCheckBox("時間短縮モード（Work 25秒 / Break 5秒）")
             time_shortening_mode.setChecked(self.time_shortening_enabled)
         always_on_top.setChecked(self._general_setting("always_on_top"))
         confirm_exit.setChecked(self._general_setting("confirm_full_exit"))
+        minimize_to_tray.setChecked(self._general_setting("minimize_to_tray"))
+        check_updates_on_exit.setChecked(self._general_setting("check_updates_on_exit"))
+        minimize_to_tray.setEnabled(self._tray_available)
+        if not self._tray_available:
+            minimize_to_tray.setToolTip("システムトレイが利用できる環境でのみ使用できます")
         general_layout.addWidget(always_on_top)
         general_layout.addWidget(confirm_exit)
-        general_layout.addStretch(1)
+        general_layout.addWidget(minimize_to_tray)
+        general_layout.addWidget(check_updates_on_exit)
         if time_shortening_mode is not None:
             general_layout.addSpacing(18)
             general_layout.addWidget(time_shortening_mode)
+        general_layout.addStretch(1)
         tabs.addTab(general_tab, "一般")
 
         notification_tab = QWidget()
@@ -1340,7 +1397,7 @@ class PomodoroOverlay(QMainWindow):
         notification_layout.addWidget(notification_sound_enabled)
         notification_help = QLabel(
             "通知が表示されない場合は、Windowsの\n"
-            "「設定 → システム → 通知」でPomodoroOverlayの通知を許可してください。"
+            f"「設定 → システム → 通知」で{APP_NAME}の通知を許可してください。"
         )
         notification_help.setWordWrap(True)
         notification_layout.addSpacing(8)
@@ -1406,13 +1463,6 @@ class PomodoroOverlay(QMainWindow):
         display_form.addRow(skin_button)
         display_layout.addLayout(display_form)
         display_layout.addStretch(1)
-        splash_artwork_button = QPushButton("起動スプラッシュのイラストを見る")
-        splash_artwork_button.setObjectName("splashArtworkButton")
-        splash_artwork_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        splash_artwork_button.clicked.connect(
-            lambda: self.show_splash_artwork(dialog)
-        )
-        display_layout.addWidget(splash_artwork_button)
         tabs.addTab(display_tab, "表示")
 
         statistics_tab = QWidget()
@@ -1472,7 +1522,7 @@ class PomodoroOverlay(QMainWindow):
             "Googleカレンダーと連携すると、\n"
             "前月の月間実績と前年の年間実績を、\n"
             "月・年の変更後に自動で記録します。\n\n"
-            "この連携はPomodoroOverlayからGoogleカレンダーへの\n"
+            f"この連携は{APP_NAME}からGoogleカレンダーへの\n"
             "一方通行です。\n\n"
             "通信状況によって同じ実績が重複して記録される場合があります。\n"
             "重複した予定はGoogleカレンダー上で削除してください。"
@@ -1531,9 +1581,7 @@ class PomodoroOverlay(QMainWindow):
 
         support_heading = QLabel("開発支援")
         support_heading.setFont(tutorial_font)
-        support_text = QLabel(
-            "OFUSEからPomodoroOverlayの開発を支援できます。"
-        )
+        support_text = QLabel(f"OFUSEから{APP_NAME}の開発を支援できます。")
         support_text.setWordWrap(True)
         support_button = QPushButton("OFUSEで開発を支援")
         support_button.clicked.connect(
@@ -1567,6 +1615,8 @@ class PomodoroOverlay(QMainWindow):
             self.settings["general"] = {
                 "always_on_top": always_on_top.isChecked(),
                 "confirm_full_exit": confirm_exit.isChecked(),
+                "minimize_to_tray": minimize_to_tray.isChecked(),
+                "check_updates_on_exit": check_updates_on_exit.isChecked(),
             }
             self.settings["notification_enabled"] = notification_enabled.isChecked()
             self.settings["notification_sound_enabled"] = notification_sound_enabled.isChecked()
@@ -1578,6 +1628,7 @@ class PomodoroOverlay(QMainWindow):
             ):
                 self._set_time_shortening_mode(time_shortening_mode.isChecked())
             self._apply_window_flags()
+            self._apply_tray_visibility()
             self._apply_display_scale()
             self.save_settings()
             dialog.accept()
@@ -1613,29 +1664,6 @@ class PomodoroOverlay(QMainWindow):
         if self.settings.get("operation_tutorial_completed", False):
             return False
         return self.show_operation_tutorial(self, allow_skip=True)
-
-    def _startup_artwork_path(self):
-        manager = getattr(self, "splash_assets", None)
-        if manager is not None:
-            path = manager.startup_image()
-            if path is not None and Path(path).is_file():
-                return Path(path)
-        bundled = bundled_path("assets/splash_default.png")
-        return bundled if bundled.is_file() else None
-
-    def show_splash_artwork(self, parent=None):
-        image_path = self._startup_artwork_path()
-        if image_path is None:
-            return False
-        self._overlay_topmost_suspended = True
-        self._apply_window_flags()
-        viewer = SplashArtworkViewer(image_path, parent or self)
-        try:
-            viewer.show_on_parent_screen()
-        finally:
-            self._overlay_topmost_suspended = False
-            self._apply_window_flags()
-        return True
 
     def _install_drag_handlers(self):
         self.central_widget.installEventFilter(self)
@@ -1753,6 +1781,7 @@ class PomodoroOverlay(QMainWindow):
         self.status_label.setText(label_text)
         self.work_button.setChecked(self.current_mode == "work")
         self.break_button.setChecked(self.current_mode == "break")
+        self._update_tray_action()
 
     def start_timer(self):
         self.notification_service.dismiss_session_completion()
@@ -1762,8 +1791,12 @@ class PomodoroOverlay(QMainWindow):
         self.is_running = True
         self.timer.start(1000)
         self.status_label.setText("Running")
+        self._update_tray_action()
 
     def _restore_from_session_notification(self):
+        if hasattr(self, "_stored_in_tray"):
+            self._restore_from_tray()
+            return
         self.showNormal()
         self.raise_()
         self.activateWindow()
@@ -1773,6 +1806,7 @@ class PomodoroOverlay(QMainWindow):
         self.is_running = False
         self.timer.stop()
         self.status_label.setText("Paused")
+        self._update_tray_action()
 
     def reset_timer(self):
         self._run_daily_maintenance()
@@ -1817,8 +1851,8 @@ class PomodoroOverlay(QMainWindow):
             "QMessageBox QPushButton { background-color: #383838; color: #ffffff; "
             "border: 1px solid #666666; border-radius: 6px; padding: 6px 14px; }"
         )
-        dialog.setWindowTitle("Pomodoro Overlayを終了しますか？")
-        dialog.setText("Pomodoro Overlayを完全に終了しますか？")
+        dialog.setWindowTitle(f"{APP_NAME}を終了しますか？")
+        dialog.setText(f"{APP_NAME}を完全に終了しますか？")
         exit_button = dialog.addButton("終了", QMessageBox.AcceptRole)
         cancel_button = dialog.addButton("キャンセル", QMessageBox.RejectRole)
         dialog.setDefaultButton(cancel_button)
@@ -1827,12 +1861,65 @@ class PomodoroOverlay(QMainWindow):
         if dialog.clickedButton() == exit_button:
             self.quit_application()
 
+    def _check_for_update_before_exit(self):
+        self._update_check_completed = True
+        service = GitHubUpdateService(
+            GITHUB_REPOSITORY,
+            APP_VERSION,
+            asset_names=RELEASE_ASSET_NAMES,
+        )
+        release = service.check_latest_release()
+        if release is None:
+            self.quit_application()
+            return
+        self._update_prompt_active = True
+        dialog = QMessageBox(self)
+        self._style_calendar_message_box(dialog)
+        dialog.setWindowTitle(f"{APP_NAME}の更新")
+        dialog.setIcon(QMessageBox.Information)
+        dialog.setText(
+            f"最新版 {release['version']} が見つかりました。\n"
+            f"現在のバージョン: v{APP_VERSION}\n\n"
+            "更新して終了すると、次回起動時に最新版へ置き換えます。"
+        )
+        update_button = dialog.addButton("更新して終了", QMessageBox.AcceptRole)
+        later_button = dialog.addButton("更新せず終了", QMessageBox.RejectRole)
+        dialog.setDefaultButton(update_button)
+        dialog.exec()
+        self._update_prompt_active = False
+        if dialog.clickedButton() == update_button:
+            try:
+                executable = current_executable_path()
+                if executable is None:
+                    raise OSError("自動更新は配布版EXEでのみ利用できます")
+                staged = service.download_asset(release, executable.parent)
+                service.schedule_windows_replace(staged, executable)
+            except Exception:
+                LOGGER.exception("Failed to stage GitHub update")
+                error_dialog = QMessageBox(self)
+                self._style_calendar_message_box(error_dialog)
+                error_dialog.setWindowTitle(f"{APP_NAME}の更新")
+                error_dialog.setIcon(QMessageBox.Warning)
+                error_dialog.setText(
+                    "更新ファイルを準備できませんでした。\n"
+                    "更新せずに終了します。"
+                )
+                error_dialog.exec()
+        elif dialog.clickedButton() != later_button:
+            return
+        self.quit_application()
+
     def quit_application(self):
         if self._is_quitting:
+            return
+        if not self._update_check_completed and self._general_setting("check_updates_on_exit"):
+            self._check_for_update_before_exit()
             return
         self._is_quitting = True
         self.stop_timer()
         self.save_settings()
+        if self._tray_icon is not None:
+            self._tray_icon.hide()
         self._shutdown_runtime()
         self.close()
         application = QApplication.instance()
@@ -1847,6 +1934,11 @@ class PomodoroOverlay(QMainWindow):
         self._settings_dialog = None
         if settings_dialog is not None and shiboken6.isValid(settings_dialog):
             settings_dialog.close()
+        if self._tray_icon is not None:
+            self._tray_icon.hide()
+        if self._single_instance_server is not None:
+            self._single_instance_server.stop()
+            self._single_instance_server = None
         self.timer.stop()
         self.date_check_timer.stop()
         self._calendar_sync_cancel.set()
@@ -1861,8 +1953,6 @@ class PomodoroOverlay(QMainWindow):
                 LOGGER.error("Calendar sync worker did not stop before shutdown")
         self._calendar_sync_thread = None
         self._calendar_sync_running = False
-        if hasattr(self, "splash_assets"):
-            self.splash_assets.cancel(wait=True)
         try:
             self.integration_signals.sync_finished.disconnect(
                 self._finish_calendar_sync
@@ -1871,6 +1961,12 @@ class PomodoroOverlay(QMainWindow):
             pass
         try:
             self.integration_signals.session_notification_activated.disconnect(
+                self._restore_from_session_notification
+            )
+        except RuntimeError:
+            pass
+        try:
+            self.integration_signals.existing_instance_requested.disconnect(
                 self._restore_from_session_notification
             )
         except RuntimeError:
@@ -2163,7 +2259,7 @@ class PomodoroOverlay(QMainWindow):
         self.save_settings()
         message_box = QMessageBox(self)
         self._style_calendar_message_box(message_box)
-        message_box.setWindowTitle("PomodoroOverlay")
+        message_box.setWindowTitle(APP_NAME)
         message_box.setIcon(QMessageBox.Information)
         message_box.setText(
             "長期間利用がなかったため、\n古い実績データをリセットしました。\n\n"
@@ -2190,6 +2286,17 @@ class PomodoroOverlay(QMainWindow):
 
     def quit_app(self):
         self.quit_application()
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if (
+            event.type() == QEvent.WindowStateChange
+            and self.isMinimized()
+            and self._general_setting("minimize_to_tray")
+            and self._tray_available
+            and not self._is_quitting
+        ):
+            QTimer.singleShot(0, self._store_in_tray)
 
     def eventFilter(self, obj, event):
         if self._monthly_report_waiting and event.type() in (
@@ -2242,78 +2349,44 @@ def ensure_single_instance():
         return None
 
 
+def wake_existing_instance():
+    try:
+        wake = socket.create_connection(("127.0.0.1", 58432), timeout=0.3)
+        wake.sendall(b"show")
+        wake.close()
+    except OSError:
+        pass
+
+
 def main():
     lock_socket = ensure_single_instance()
     if lock_socket is None:
+        wake_existing_instance()
         return 0
 
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setQuitOnLastWindowClosed(False)
     if getattr(sys, "frozen", False):
-        bundled_splash = Path(sys._MEIPASS) / "assets" / "splash_default.png"
         app_icon_path = Path(sys._MEIPASS) / "assets" / "app_icon.png"
     else:
-        bundled_splash = Path(__file__).resolve().parent / "assets" / "splash_default.png"
         app_icon_path = Path(__file__).resolve().parent / "assets" / "app_icon.png"
     if app_icon_path.is_file():
         app.setWindowIcon(QIcon(str(app_icon_path)))
-    local_appdata = os.getenv("LOCALAPPDATA")
-    cache_root = (
-        Path(local_appdata) / "PomodoroOverlay" / "splash_cache"
-        if local_appdata
-        else Path.home() / ".pomodoro_overlay" / "splash_cache"
-    )
-    splash_assets = SplashAssetManager(
-        cache_root, bundled_splash, app_version=APP_VERSION
-    )
-    if splash_assets.needs_initial_preparation():
-        preparation = QProgressDialog(
-            "最適化中\nこのままお待ちください", "", 0, 0
-        )
-        preparation.setWindowTitle("PomodoroOverlay")
-        preparation.setCancelButton(None)
-        preparation.setWindowFlag(Qt.WindowCloseButtonHint, False)
-        preparation.setWindowModality(Qt.ApplicationModal)
-        preparation.setMinimumDuration(0)
-        preparation.setAutoClose(False)
-        preparation.setAutoReset(False)
-        def prepare_asset():
-            splash_assets.prepare_initial_asset()
-
-        worker = threading.Thread(target=prepare_asset, daemon=True)
-        worker.start()
-        poller = QTimer(preparation)
-
-        def finish_when_ready():
-            if not worker.is_alive():
-                poller.stop()
-                preparation.close()
-
-        poller.timeout.connect(finish_when_ready)
-        poller.start(20)
-        preparation.exec()
-        worker.join()
-    splash = SplashWindow(APP_VERSION, splash_assets.startup_image())
-    splash_lifetime = SplashLifetime(splash)
-    splash.show_centered()
-    app.processEvents()
     window = PomodoroOverlay()
-    window.splash_assets = splash_assets
-    def finish_splash():
-        splash_lifetime.close()
-        window.show()
-        QTimer.singleShot(0, window.show_initial_operation_tutorial)
-
-    QTimer.singleShot(SPLASH_DISPLAY_MS, finish_splash)
-    QTimer.singleShot(120_000, splash_assets.start_background_update)
+    window.show()
+    QTimer.singleShot(0, window.show_initial_operation_tutorial)
     window._lock_socket = lock_socket
+    window._single_instance_server = SingleInstanceServer(
+        lock_socket,
+        window.integration_signals.existing_instance_requested.emit,
+    )
+    window._single_instance_server.start()
     exit_code = app.exec()
     if not window._shutdown_complete:
         window._is_quitting = True
         window._shutdown_runtime()
         window.close()
-    splash_lifetime.close()
     window.deleteLater()
     QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
     app.processEvents()

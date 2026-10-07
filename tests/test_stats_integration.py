@@ -452,7 +452,6 @@ class OverlayCompletionTests(unittest.TestCase):
                 self.assertTrue(any("開発支援" in text for text in all_labels))
                 self.assertIn("操作チュートリアルを開く", all_buttons)
                 self.assertIn("スキン", all_buttons)
-                self.assertIn("起動スプラッシュのイラストを見る", all_buttons)
                 self.assertIn("カレンダーに書き込み", statistics_buttons)
                 self.assertNotIn("カレンダーに書き込み", integration_buttons)
                 self.assertIn("Googleカレンダーに飛ぶ", integration_buttons)
@@ -460,8 +459,10 @@ class OverlayCompletionTests(unittest.TestCase):
                 self.assertEqual(open_calendar_enabled, [False])
                 self.assertEqual(open_calendar_disabled_style, [True])
                 self.assertEqual(settings_topmost, [False])
-                self.assertTrue(window.windowFlags() & Qt.WindowStaysOnTopHint)
+                self.assertFalse(window.windowFlags() & Qt.WindowStaysOnTopHint)
                 self.assertIn("常に最前面に表示", general_checkboxes)
+                self.assertIn("最小化時にタスクトレイへ収納する", general_checkboxes)
+                self.assertIn("終了時にGitHubで最新版を確認する", general_checkboxes)
                 self.assertEqual(
                     skin_button_policies,
                     [QSizePolicy.Policy.Expanding],
@@ -784,67 +785,6 @@ class OverlayCompletionTests(unittest.TestCase):
         self.assertIn("border-radius: 8px", row.styleSheet())
         dialog.close()
 
-    def test_splash_artwork_viewer_dims_screen_and_closes_outside_or_by_text_x(self):
-        import main
-        from PySide6.QtCore import QPoint, Qt
-        from PySide6.QtGui import QPixmap
-        from PySide6.QtTest import QTest
-        from PySide6.QtWidgets import QPushButton
-
-        image_path = Path(__file__).resolve().parents[1] / "assets" / "splash_default.png"
-        viewer = main.SplashArtworkViewer(image_path)
-        viewer.resize(800, 600)
-        viewer.show()
-        self.app.processEvents()
-        self.assertFalse(viewer.image_label.pixmap().isNull())
-        self.assertTrue(viewer.windowFlags() & Qt.WindowStaysOnTopHint)
-        self.assertIsInstance(viewer.close_label, main.ClickableLabel)
-        self.assertNotIsInstance(viewer.close_label, QPushButton)
-        rendered = QPixmap(viewer.size())
-        rendered.fill(Qt.transparent)
-        viewer.render(rendered)
-        outside = rendered.toImage().pixelColor(1, 1)
-        self.assertGreater(outside.alpha(), 0)
-        self.assertLess(outside.red(), 40)
-        QTest.mouseClick(viewer, Qt.LeftButton, pos=QPoint(2, 2))
-        self.assertFalse(viewer.isVisible())
-
-        viewer = main.SplashArtworkViewer(image_path)
-        viewer.resize(800, 600)
-        viewer.show()
-        self.app.processEvents()
-        QTest.mouseClick(viewer.close_label, Qt.LeftButton)
-        self.assertFalse(viewer.isVisible())
-
-    def test_splash_artwork_temporarily_releases_overlay_topmost_state(self):
-        import main
-
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "settings.json"
-            image_path = Path(__file__).resolve().parents[1] / "assets" / "splash_default.png"
-            with patch.object(main.PomodoroOverlay, "_get_settings_path", return_value=path):
-                window = main.PomodoroOverlay()
-                window.show()
-                self.app.processEvents()
-                observed_overlay_topmost = []
-
-                viewer = Mock()
-                viewer.show_on_parent_screen.side_effect = lambda: observed_overlay_topmost.append(
-                    bool(window.windowFlags() & main.Qt.WindowStaysOnTopHint)
-                )
-                with (
-                    patch.object(window, "_startup_artwork_path", return_value=image_path),
-                    patch.object(main, "SplashArtworkViewer", return_value=viewer),
-                ):
-                    self.assertTrue(window.show_splash_artwork())
-
-                self.assertEqual(observed_overlay_topmost, [False])
-                self.assertTrue(window.windowFlags() & main.Qt.WindowStaysOnTopHint)
-                viewer.show_on_parent_screen.assert_called_once_with()
-                window.date_check_timer.stop()
-                window._is_quitting = True
-                window.close()
-
     def test_selected_skin_is_applied_and_persisted(self):
         import main
 
@@ -904,7 +844,7 @@ class OverlayCompletionTests(unittest.TestCase):
         self.assertIn("Start", page_text)
         self.assertIn("Stop", page_text)
         self.assertIn("Reset", page_text)
-        self.assertIn("<b>PomodoroOverlay</b>", page_text)
+        self.assertIn("<b>Pomo Skin</b>", page_text)
         self.assertIn("<b>背景色</b>", page_text)
         self.assertIn("<b>公式スキン</b>", page_text)
         self.assertTrue(tutorial.next_button.font().bold())
@@ -1206,7 +1146,6 @@ class OverlayCompletionTests(unittest.TestCase):
             path = Path(directory) / "settings.json"
             with patch.object(main.PomodoroOverlay, "_get_settings_path", return_value=path):
                 window = main.PomodoroOverlay()
-                window.splash_assets = Mock()
                 window.notification_service = Mock()
                 window._lock_socket = Mock()
                 window._calendar_sync_thread = threading.Thread(
@@ -1220,7 +1159,6 @@ class OverlayCompletionTests(unittest.TestCase):
                 self.assertTrue(window._calendar_sync_cancel.is_set())
                 self.assertFalse(window.timer.isActive())
                 self.assertFalse(window.date_check_timer.isActive())
-                window.splash_assets.cancel.assert_called_once_with(wait=True)
                 window.notification_service.shutdown.assert_called_once_with()
                 self.assertIsNone(window._calendar_sync_thread)
                 self.assertIsNone(window._lock_socket)
@@ -1293,7 +1231,7 @@ class OverlayCompletionTests(unittest.TestCase):
                 self.app.processEvents()
                 self.assertEqual(
                     captured_titles,
-                    [f"PomodoroOverlay v{main.APP_VERSION} 時間短縮モード"],
+                    [f"Pomo Skin v{main.APP_VERSION} 時間短縮モード"],
                 )
                 self.assertEqual(captured_checked, [True])
                 self.assertFalse(window.time_shortening_enabled)

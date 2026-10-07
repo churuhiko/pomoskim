@@ -28,7 +28,6 @@ pomodoro_settings.json
 pomodoro_history.json
 cache/
 .cache/
-splash_cache/
 *.cache
 *.tmp
 *.temp

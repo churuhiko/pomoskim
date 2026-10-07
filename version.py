@@ -1,9 +1,8 @@
-"""Application release metadata.
+"""Application release metadata shared by the UI, updater, and packaging."""
 
-Keep the preview identifier in one module so the window title, splash screen,
-and splash-asset cache all refer to the same build.
-"""
+APP_NAME = "Pomo Skin"
+APP_VERSION = "0.3.0-preview.3"
 
-APP_NAME = "Pomodoro Overlay"
-APP_VERSION = "0.3.0-preview.1"
-
+# GitHub owner/repository used for Release downloads and in-app update checks.
+GITHUB_REPOSITORY = "churuhiko/pomoskim"
+RELEASE_ASSET_NAMES = ("PomoSkin.exe", "PomodoroOverlay.exe")

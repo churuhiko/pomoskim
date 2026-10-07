@@ -1,23 +1,25 @@
-# PomodoroOverlay
+# Pomo Skin
 
 Windows 11向けの軽量な常駐型ポモドーロタイマーです。作業画面の隅に置き、集中時間と休憩時間をシンプルに管理できます。
 
-現在のデスクトップ版: **v0.3.0-preview.1**
+現在のデスクトップ版: **v0.3.0-preview.3**
+
+公開リポジトリ: [github.com/churuhiko/pomoskim](https://github.com/churuhiko/pomoskim)
 
 ## 主な機能
 
 - `Work 25m`／`Break 5m`タイマー
 - 作業と休憩の自動切り替え
 - Start／Stop／Reset
-- 最前面表示、最小化、ドラッグ移動、表示倍率変更
+- 最前面表示、最小化、タスクトレイ収納、ドラッグ移動、表示倍率変更
 - Windows 11標準トースト通知と通知音
 - 低彩度の背景色プリセット
 - スクロール式スキン選択画面と公式スキン
 - 当日・当月・当年の実績集計
 - Googleカレンダーへの一方向の月報・年報記録
+- 終了時のGitHub最新版確認と配布版の自動更新
 - 初回操作チュートリアルとアプリ内ヘルプ
-- 起動スプラッシュと専用アイコン
-- 表示タブから起動スプラッシュのイラストを半暗転表示で閲覧可能
+- 専用アプリアイコン
 
 ## 対応環境
 
@@ -38,11 +40,13 @@ python main.py
 1. `Work 25m`または`Break 5m`を選択します。
 2. `Start`で開始、`Stop`で一時停止、`Reset`で初期時間へ戻します。
 3. 歯車ボタンから通知、表示、実績、Googleカレンダー連携、ヘルプを設定できます。
-4. `−`で最小化、`×`から完全終了できます。
+4. `−`で最小化、設定でタスクトレイ収納を有効にするとトレイへ格納できます。`×`から完全終了できます。
+
+使い方の詳細は[オンライン説明書](docs/manual.html)を参照してください。
 
 ## Googleカレンダー連携
 
-PomodoroOverlayからGoogleカレンダーへ新規の終日予定を書き込む一方向連携です。既存予定の読取・検索・更新・重複判定は行いません。通信結果が不明な再送では予定が重複する場合があります。
+Pomo SkinからGoogleカレンダーへ新規の終日予定を書き込む一方向連携です。既存予定の読取・検索・更新・重複判定は行いません。通信結果が不明な再送では予定が重複する場合があります。
 
 OAuthクライアント情報とトークンはローカル専用です。`local_credentials/`、`google_calendar_token.json`、`credentials*.json`などをGitへ追加しないでください。
 
@@ -63,6 +67,10 @@ python -m PyInstaller --noconfirm PomodoroOverlay.spec
 ```
 
 生成物、ローカル設定、認証情報、引き継ぎ資料は`.gitignore`で公開対象から除外します。
+
+## GitHub公開とRelease
+
+`main`へpushするとGitHub Actionsでテストが実行されます。`v`から始まるタグ（例: `v0.3.0-preview.2`）をpushすると、Windows向けにビルドした`PomoSkin.exe`をGitHub Releaseへ添付します。GitHub Pagesは`docs/`を公開し、トップページのダウンロードボタンは最新版Releaseへリンクします。
 
 ## 連絡先・開発支援
 
